@@ -1,0 +1,132 @@
+---
+title: "White top Frequency"
+author: "Amanda Stahlke"
+date: "12/18/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(scipen=999)
+```
+
+```{r libraries, message=FALSE, collapse=TRUE}
+# data processing
+library(dplyr)
+library(SDMTools)
+```
+
+
+```{r}
+freq_plot <- read.csv("Ldraba_raw_data_frequency.csv")
+head(freq_plot, 20)
+```
+
+```{r}
+
+freq_tots <- freq_plot %>%
+  filter(cell_row=="Totals")
+colnames(freq_tots)
+dropcols <- c('date', 'recorder')
+freq_tots <- freq_tots[,-which(colnames(freq_tots)==dropcols)]
+freq_tots$site <- rep(1:6, each=3)
+freq_tots$plot <- rep(1:3,  times=6)
+freq_tots
+freq_tots$site.plot <- paste0(freq_tots$site, ".", freq_tots$plot)
+
+### These were calculated in Google sheet
+colnames(freq_tots)[which(colnames(freq_tots)=="X")] <- "rowsum"
+
+freq_tots %>%
+  group_by(site.plot) %>%
+  summarise(mean(rowsum)) %>%
+  arrange(`mean(rowsum)`)
+
+freq_tots %>%
+  group_by(site) %>%
+  summarise(mean(rowsum), sd(rowsum)) %>%
+  arrange(`mean(rowsum)`)
+
+freq_tots %>%
+  # group_by(site) %>%
+  summarise(mean(rowsum), sd(rowsum))
+```
+```{r}
+freq_plot %>%
+  filter(site==1) %>%
+  dplyr::select(starts_with("col")) %>%
+  as.matrix() %>%
+  PatchStat(.,cellsize=1)
+
+freq_plot %>%
+  filter(site==1) %>%
+  dplyr::select(starts_with("col")) %>%
+  as.matrix() %>%
+  ClassStat(.,cellsize=1)
+
+freq_plot %>%
+  filter(site==2) %>%
+  dplyr::select(starts_with("col")) %>%
+  as.matrix() %>%
+  # SDMTools::PatchStat(.,cellsize=1)
+  ClassStat(.,cellsize=1)
+
+freq_plot %>%
+  filter(site==3) %>%
+  dplyr::select(starts_with("col")) %>%
+  as.matrix() %>%
+  ClassStat(.,cellsize=1)
+
+freq_plot %>%
+  filter(site==4) %>%
+  dplyr::select(starts_with("col")) %>%
+  as.matrix() %>%
+  ClassStat(.,cellsize=1)
+
+freq_plot %>%
+  filter(site==5) %>%
+  dplyr::select(starts_with("col")) %>%
+  # as.matrix() %>%SDMTools::ConnCompLabel() %>%
+  ClassStat(.,cellsize=1)
+
+freq_plot %>%
+  filter(site==6) %>%
+  dplyr::select(starts_with("col")) %>%
+  as.matrix() %>%
+  SDMTools::ConnCompLabel() %>%
+  ClassStat(.,cellsize=1)
+
+freq_plot %>%
+  filter(site==4 & plot==1) %>%
+  dplyr::select(starts_with("col")) %>%
+  as.matrix() %>%
+  # SDMTools::ConnCompLabel() %>%
+  ClassStat(.,cellsize=1)
+
+freq_plot %>%
+  filter(site==4 & plot==2) %>%
+  dplyr::select(starts_with("col")) %>%
+  as.matrix() %>%
+  # SDMTools::ConnCompLabel() %>%
+  ClassStat(.,cellsize=1)
+
+freq_plot %>%
+  filter(site==4 & plot==3) %>%
+  dplyr::select(starts_with("col")) %>%
+  as.matrix() %>%
+  ClassStat(.,cellsize=1)
+
+freq_plot %>%
+  filter(site==4 & plot==3) %>%
+  dplyr::select(starts_with("col")) %>%
+  as.matrix() %>%
+  ConnCompLabel()
+
+freq_plot %>%
+  filter(site==4 & plot==3) %>%
+  dplyr::select(starts_with("col")) %>%
+  as.matrix() %>%
+  ConnCompLabel() %>%
+  ClassStat(.,cellsize=1)
+```
+
