@@ -4,9 +4,9 @@ title: Environmental Analysis - How do sites differ and does this determine rate
 author: "Amanda Stahlke"
 date: "5/13/2020"
 output:
+  pdf_document: default
   html_document:
     df_print: paged
-  pdf_document: default
   word_document: default
 ---
 
@@ -97,7 +97,7 @@ Grass is highly variable across sites. Bare ground seems to best seperate the lo
 # Correlation among vriables 
 
 Next, look at soil nutrient variables. 
-```{r}
+```{r correlation}
 cormat <- round(cor(gen_env[,c(7:9,11:dim(gen_env)[2])],  method = "spearman"),2) # drop texture and site
 cormat
 # Get upper triangle of the correlation matrix
@@ -135,7 +135,7 @@ melted_cormat %>%
 
 ## Drop highly correlated variables for envfact
 
-```{r}
+```{r drop_correlation_envfact}
 names(gen_env)
 env_fact<-gen_env[,11:dim(gen_env)[2]]
 names(env_fact)
@@ -148,13 +148,13 @@ cormat <- round(cor(env_fact),2)
 reshape2::melt(cormat) %>%
   filter(abs(value) >.5 & value <1)
 
-View(env_fact)
+env_fact
 ```
 
 Drop Ca, Clay, Cu, and Salts
 
 #NMDS of subplots
-```{r}
+```{r NMDS}
 env.mds<-metaMDS(env_fact, distance = "gower", k=4)
 stressplot(env.mds)
 ```
@@ -164,7 +164,7 @@ Run 20 stress 0.1058718
 Is another interation using previous best necessary? Or just good practice? 
 
 
-```{r}
+```{r NMDS2}
 env.mds2<-metaMDS(env_fact, distance = "gower", k=4, previous.best = env.mds)
 stressplot(env.mds2)
 ```
@@ -174,13 +174,13 @@ Run 20 stress 0.1047461
 Non-metric fit is better than linear 
 
 
-```{r}
+```{r stress_dims}
 dim.result <- dimcheckMDS(env_fact,distance="gower",k=8,trymax = 20)
 data.frame(dimension = seq_along(dim.result), stress=dim.result)
 ```
 Stress is still barely above .2 at 2 dimensions, might as well show 3 dims. 
 
-```{r, warning=F, message=F}
+```{r NMDS_plot_site, warning=F, message=F}
 env.plot<-ordiplot(env.mds,display = "sites",type="n", choices = c(1,2))
 
 ordisymbol(env.plot, gen_env, "Site", legend=TRUE,cex=2,lwd=2,choices = c(1,2))
@@ -189,7 +189,7 @@ plot(env.factors, p.max=0.01)
 ```
 
 Here, symbols represent the G/N ranking, where 1 is fewest clones and 6 is most. 
-```{r, warning=F, message=F}
+```{r NMDS_plot_GNrank, warning=F, message=F}
 env.plot<-ordiplot(env.mds,display = "sites",type="n", choices = c(1,2))
 
 ordisymbol(env.plot, gen_env, "GN_Rank", legend=TRUE,cex=2,lwd=2,choices = c(1,2))
@@ -197,28 +197,20 @@ env.factors<-envfit(env.mds,env_fact)
 plot(env.factors)
 ```
 
-### Examine multivariate dispersion among sites
+# Examine multivariate dispersion among sites
 Betadispersion - sites. Create a dissimilarity matrix for betdispersion analysis; Looks at multivariate dispersion (variance) among SITES
 
-```{r}
+```{r betadisp}
 commax<-vegdist(env_fact, method = "gower")
 fum<-with(gen_env,betadisper(commax,Site))
 plot(fum)
-```
-
-
-```{r}
 boxplot(fum) #variation among sampled points
 permutest(fum) #-- Difference in multivariate dispersion between sites
-```
-
-
-```{r}
 TukeyHSD(fum)
 ```
 
-
-# Make soil variables from soils NMDS
+# Make composite soil variables 
+## from soils NMDS
 
 ```{r}
 soilz<-gen_env[,c("pH","OM","Nitrate","K","S",
@@ -237,7 +229,7 @@ data.frame(dimension = seq_along(dim.soil.result), stress=dim.soil.result)
 ```
 
 
-```{r}
+```{r plot_soilz_NMDS}
 nut.plot<-ordiplot(soilz.mds,display = "sites",type="n")
 ordisymbol(nut.plot, gen_env, "Site", legend=TRUE,cex=2,lwd=2)
 nut.factors<-envfit(soilz.mds,soilz)
@@ -261,17 +253,29 @@ soil.nut2.pcoa<-res$vectors[,"Axis.2"]
 
 barplot(res$values$Relative_eig)
 cumsum(res$values$Relative_eig)
-cumsum(res2$eig)/sum(res2$eig)
+cumsum(res$eig)/sum(res$eig)
 
 ```
+# Do we need to account for site? 
+```{r}
+env2 <- gen_env[,c(11:ncol(gen_env))]
+env2 <- as.matrix(env2)
+colnames(env2)
 
+# vegdist(env2, distance = "gower")
+anosim <- anosim(env2, grouping = gen_env$Site, distance = "gower", permutations = 9999) 
+anosim
+plot(anosim)
 
+adonis <- adonis2(env2 ~ gen_env$Site)
+plot(adonis)
+```
 # Global model for multi-model comparison; Clone 0,1
 
 glm() fits a generalized linear model and glmer() fits linear mixed effects models
 
-Global model includes Sand, grass, bare, soil, nmds nutrients 1, nmds nutrients 2
-lme allows inclusions of site as a random factor
+Global model includes Sand, grass, bare, soil, poca nutrients 1, pcoa nutrients 2
+glmer allows inclusions of site as a random factor. 
 
 ```{r}
 cl_global_glm <- glm(Clone ~ Sand+grass+bare+
@@ -290,6 +294,8 @@ summary(cl_global_site)
 
 anova(cl_global_site, cl_global_glm)
 ```
+
+Inclusion of site as random factor impoves AIC. 
 
 Any outlier points outweighing the influence of the glm? 
 ```{r}
@@ -331,6 +337,8 @@ cl_global_glmer_pruned<-glmer(Clone ~
 summary(cl_global_glm_pruned)
 summary(cl_global_glmer_pruned)
 ```
+
+
 
 ```{r}
 cooksd_pruned<-cooks.distance(cl_global_glm_pruned)
@@ -381,6 +389,8 @@ anova(cl_global_glmer_pruned4, cl_global_glm_pruned4)
 ```
 After dropping site 4, the glmer incorporating site was still a significantly better model.The glm identified the intercept, Sand, bare, and soil.nut1 as highly significant.  The glmer identfied Sand, grass, bare*, and soil.nut1. 
 
+Outliers? 
+
 ```{r}
 cooksd_pruned <- cooks.distance(cl_global_glm_pruned4)
 plot(cooksd_pruned)
@@ -424,21 +434,33 @@ summary(cl_redux2_glmer_pruned4)
 
 anova(cl_global_glmer_pruned4, cl_redux2_glmer_pruned4)
 
+cl_redux2_glmer_pruned4<-glmer(Clone ~
+                                Sand+grass+
+                                soil.nut1.pcoa_pruned4
+                              +(1|gen_env_pruned4$Site),
+                              data=gen_env_pruned4,
+                              family="binomial",
+                              na.action = "na.fail",
+                              weights = rep(15,dim(gen_env_pruned4)[1]))
+summary(cl_redux2_glmer_pruned4)
+
+
 ```
 
+With site 4, reduce model. 
+
 ```{r}
-cl_redux1_glmer_pruned<-glmer(Clone ~ 
+cl_redux1_glmer_pruned<- glmer(Clone ~ 
            Sand+ grass + bare +
              soil.nut1.pcoa_pruned +
-           +(1|cl_global_glm_pruned4$Site),
-           data=cl_global_glm_pruned4, 
+           +(1|gen_env_pruned$Site),
+           data=gen_env_pruned, 
            family="binomial", 
            na.action = "na.fail",
            weights = rep(13,dim(gen_env_pruned)[1]))
 summary(cl_redux1_glmer_pruned)
 
 anova(cl_global_glmer_pruned, cl_redux1_glmer_pruned)
-
 
 cl_redux2_glmer_pruned <- glmer(Clone ~ 
             Sand+ grass
@@ -457,7 +479,7 @@ cl_redux3_glmer_pruned <- glmer(Clone ~
              data=gen_env_pruned,family="binomial",
             na.action = "na.fail",
              weights = rep(13,dim(gen_env_pruned)[1]))
-summary(cl_redux4_glmer_pruned)
+summary(cl_redux3_glmer_pruned)
 
 cl_redux4_glmer_pruned <- glmer(Clone ~ 
             grass + soil.nut1.pcoa_pruned +
@@ -467,17 +489,6 @@ cl_redux4_glmer_pruned <- glmer(Clone ~
              weights = rep(13,dim(gen_env_pruned)[1]))
 
 anova(cl_redux2_glmer_pruned, cl_redux3_glmer_pruned)
-
-
-cl_redux3interaction_glmer_pruned <- glmer(Clone ~ 
-            Sand * soil.nut1.pcoa_pruned +
-              (1|gen_env_pruned$Site),
-             data=gen_env_pruned,family="binomial",
-            na.action = "na.fail",
-             weights = rep(13,dim(gen_env_pruned)[1]))
-summary(cl_redux3interaction_glmer_pruned)
-
-anova(cl_redux2_glmer_pruned, cl_redux3interaction_glmer_pruned)
 ```
 
 ## Can we identify individual soil variables that predict subplot clonality? 
@@ -492,11 +503,11 @@ cl_redux_nutrs_glmer_pruned <- glmer(Clone ~
              weights = rep(13,dim(gen_env_pruned)[1]))
 summary(cl_redux_nutrs_glmer_pruned)
 
-
-cl_redux_nutrs_glmer_pruned4<-glmer(Clone ~
+## without site 4
+cl_redux_nutrs_glmer_pruned4 <- glmer(Clone ~
                               grass + Sand +                         
-                              I(K/100)+ OM + Fe + Zn + S + Mn
-                              +(1|gen_env_pruned4$Site),
+                              I(K/100) + OM + Fe + Zn + S + Mn
+                              + (1|gen_env_pruned4$Site),
                               data=gen_env_pruned4,
                               family="binomial",
                               na.action = "na.fail",
@@ -508,7 +519,7 @@ summary(cl_redux_nutrs_glmer_pruned4)
 
 ## Try re-scaling soil.nutrients or grass/sand/bare?
 
-```{r drop_4}
+```{r rescale_srufacevars}
 max(soil.nut1.pcoa_pruned4) - min(soil.nut1.pcoa_pruned4)
 max(soil.nut2.pcoa_pruned4) - min(soil.nut2.pcoa_pruned4)
 
@@ -616,38 +627,6 @@ importance(subset(dd4, delta<=2))
 
 ```
 
-
-
-
-
-
-```{r}
-summary(glmer(Clone~
-                grass+bare+
-                Fe+Mn+(1|gen_env$Site),data=gen_env,family="binomial",na.action = "na.fail"))
-
-```
-
-```{r}
-cl_redux2_nutrs_site <- glm(Clone~grass+bare+K+Fe+OM+Mn+Na,data=gen_env,family="binomial",na.action = "na.fail")
-summary(cl_redux2_nutrs_site)
-```
-
-```{r}
-cl_redux3_nutrs_site <- glmer(Clone~grass+bare+Fe+Mn+(1|gen_env$Site),data=gen_env,family="binomial",na.action = "na.fail")
-summary(cl_redux3_nutrs_site)
-```
-
-```{r}
-dd<-dredge(cl_redux2_nutrs_site)
-subset(dd,delta<4)
-importance(dd)#)
-```
-
-```{r}
-importance(subset(dd, delta<=2))
-```
-
 # Do the same predictors of clonality predict Stem density (1-inf)?
 lmer for continuous cariable: count of stems with random effect of site. 
 
@@ -691,7 +670,6 @@ eleaps(irisHmat$mat,kmin=2)#,H=irisHmat$H,r=irisHmat$r,crit="ccr12")
 ```
 
 ```{r}
-
 fit <- lda(Site ~ K + Mg + Na, data=soil, na.action=na.exclude,
            CV=TRUE)
 fit # show results
@@ -699,7 +677,7 @@ fit # show results
 
 
 # CAnonical Analysis of Principal Coordinates 
-## (as in Andreson & Willis 2003, Biodiversity R package)
+As in Andreson & Willis 2003, Biodiversity R package
 In constrained ordination we do not want to display all or even most ofthe compositional variation, but only the variation that can be explained by the used environmental variables, or constraints.
 
 ```{r}
@@ -710,7 +688,6 @@ Ordination.model1 <- CAPdiscrim(soilz~factClone,
                                 dist="gower", 
                                 axes=3, m=0, add=FALSE)
 Ordination.model1
-
 
 # data(env_fact)
 # Ordination.model1 <- CAPdiscrim(env_fact~Site,
@@ -826,24 +803,6 @@ summary(CAPdiscrim(soilz~Site, data=gen_env,
 ```
 
 
-
-```{r}
-## do we need to account for site? 
-### run discriminant analysis from principal coordinates of gower distance matrix
-env2 <- gen_env[,c(11:ncol(gen_env))]
-env2 <- as.matrix(env2)
-
-# vegdist(env2, distance = "gower")
-anosim <- anosim(env2, grouping = gen_env$Site, distance = "gower", permutations = 9999) 
-anosim
-plot(anosim)
-
-adonis <- adonis2(env2 ~ gen_env$Site)
-plot(adonis)
-
-```
-
-
 # CART
 Do the same variables that divide sites also classify clonality?
 ```{r}
@@ -896,8 +855,9 @@ fit <- ctree(Site ~ pH+OM+Nitrate+K+S+Zn+Fe+Mn+Mg+Na+CEC+P,
 plot(fit, main="Conditional Inference Tree for Site")
 ```
 
-######NMDS extras
+
 ```{r}
+######NMDS extras
 # nut.labs<-c("K","Clay","Na","S","Mg","BareG","P")
 # 
 # 
@@ -914,9 +874,6 @@ plot(fit, main="Conditional Inference Tree for Site")
 # clonz.loc<-locator(6)
 # text(clonz.loc,1:6)
 
-```
-
-```{r}
 #library(stringi)
 #byPlot$Site<-substr(byPlot$site.plot,1,1)
 #byPlot$Plot<-substr(byPlot$site.plot,3,3)
@@ -931,10 +888,7 @@ plot(fit, main="Conditional Inference Tree for Site")
 #bySite$Evn<-round(Ev(bySite$Div,Dmi = Dmin(G=bySite$site.G,30),Dma = Dmax(bySite$site.G,30)),2)
 #plot(bySite$Div,bySite$Evn)
 
-```
 
-
-```{r}
 ####Principal Components Analysis -- making a soil nutrient variable
 #gen_env<-gen_env[-which(gen_env$site.plot.subplot=="4.2.6"),]
 
