@@ -99,7 +99,7 @@ Grass is highly variable across sites. Bare ground seems to best seperate the lo
 Next, look at soil nutrient variables. 
 ```{r correlation}
 cormat <- round(cor(gen_env[,c(7:9,11:dim(gen_env)[2])],  method = "spearman"),2) # drop texture and site
-cormat
+
 # Get upper triangle of the correlation matrix
   get_upper_tri <- function(cormat){
     cormat[lower.tri(cormat)]<- NA
@@ -113,7 +113,7 @@ ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) +
   geom_tile(color = "white")+
  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
    midpoint = 0, limit = c(-1,1), space = "Lab", 
-   name="Pearson\nCorrelation") +
+   name="Spearman\nCorrelation") +
   theme_minimal()+ 
  theme(axis.text.x = element_text(angle = 45, vjust = 1, 
     hjust = 1))+
@@ -147,8 +147,6 @@ head(env_fact)
 cormat <- round(cor(env_fact),2)
 reshape2::melt(cormat) %>%
   filter(abs(value) >.5 & value <1)
-
-env_fact
 ```
 
 Drop Ca, Clay, Cu, and Salts
@@ -159,20 +157,13 @@ env.mds<-metaMDS(env_fact, distance = "gower", k=4)
 stressplot(env.mds)
 ```
 
-Run 20 stress 0.1058718 
-*** Solution reached
-Is another interation using previous best necessary? Or just good practice? 
-
-
 ```{r NMDS2}
 env.mds2<-metaMDS(env_fact, distance = "gower", k=4, previous.best = env.mds)
 stressplot(env.mds2)
 ```
 
-Run 20 stress 0.1047461 
 *** Solution reached
 Non-metric fit is better than linear 
-
 
 ```{r stress_dims}
 dim.result <- dimcheckMDS(env_fact,distance="gower",k=8,trymax = 20)
@@ -212,7 +203,7 @@ TukeyHSD(fum)
 # Make composite soil variables 
 ## from soils NMDS
 
-```{r}
+```{r make_soilz_MDS}
 soilz<-gen_env[,c("pH","OM","Nitrate","K","S",
                   "Zn","Fe","Mn","Mg","Na","CEC","P")] 
 
@@ -239,7 +230,7 @@ plot(nut.factors)
 
 ## Make soil variables from PCoA
 
-```{r}
+```{r soilz_pcoa}
 soilz.D <- vegdist(soilz, "gower")
 res <- ape::pcoa(soilz.D)
 nut.factors<-envfit(soilz.D, soilz, perm=999)
@@ -257,7 +248,7 @@ cumsum(res$eig)/sum(res$eig)
 
 ```
 # Do we need to account for site? 
-```{r}
+```{r anosim_adonis}
 env2 <- gen_env[,c(11:ncol(gen_env))]
 env2 <- as.matrix(env2)
 colnames(env2)
@@ -268,8 +259,10 @@ anosim
 plot(anosim)
 
 adonis <- adonis2(env2 ~ gen_env$Site)
-plot(adonis)
+adonis
 ```
+
+
 # Global model for multi-model comparison; Clone 0,1
 
 glm() fits a generalized linear model and glmer() fits linear mixed effects models
@@ -503,9 +496,15 @@ cl_redux_nutrs_glmer_pruned <- glmer(Clone ~
              weights = rep(13,dim(gen_env_pruned)[1]))
 summary(cl_redux_nutrs_glmer_pruned)
 
+dd<-dredge(cl_redux_nutrs_glmer_pruned)
+subset(dd,delta<4)
+importance(dd)#)
+importance(subset(dd, delta<=2))
+
+
 ## without site 4
 cl_redux_nutrs_glmer_pruned4 <- glmer(Clone ~
-                              grass + Sand +                         
+                              grass + Sand +                        
                               I(K/100) + OM + Fe + Zn + S + Mn
                               + (1|gen_env_pruned4$Site),
                               data=gen_env_pruned4,
@@ -514,12 +513,17 @@ cl_redux_nutrs_glmer_pruned4 <- glmer(Clone ~
                               weights = rep(15,dim(gen_env_pruned4)[1]))
 summary(cl_redux_nutrs_glmer_pruned4)
 
+dd4<-dredge(cl_redux_nutrs_glmer_pruned4)
+subset(dd4,delta<4)
+importance(dd4)#)
+importance(subset(dd4, delta<=2))
+
 ```
 
 
 ## Try re-scaling soil.nutrients or grass/sand/bare?
 
-```{r rescale_srufacevars}
+```{r rescale_surfacevars}
 max(soil.nut1.pcoa_pruned4) - min(soil.nut1.pcoa_pruned4)
 max(soil.nut2.pcoa_pruned4) - min(soil.nut2.pcoa_pruned4)
 
@@ -553,7 +557,9 @@ cl_global_glmer_pruned<-glmer(Clone ~
 summary(cl_global_glmer_pruned)
 
 cl_redux_nutrs_glmer_pruned4_rescale<-glmer(Clone ~
-                                      I(Sand/100) + I(grass/100) +I(bare/100)+
+                                      I(Sand/100) + 
+                                        I(grass/100) + 
+                                        I(bare/100) +
                               I(K/100)+ OM + Fe + Zn + S + Mn
                               +(1|gen_env_pruned4$Site),
                               data=gen_env_pruned4,
@@ -565,12 +571,12 @@ summary(cl_redux_nutrs_glmer_pruned4_rescale)
 dd2_4<-dredge(cl_redux_nutrs_glmer_pruned4_rescale)
 subset(dd2_4,delta<=2)
 importance(dd2_4)#)
-# importance(subset(dd2_4, delta<=2))
 importance(subset(dd2_4, delta<4))
 
 
 cl_redux_nutrs_glmer_pruned_rescale<-glmer(Clone ~
-                                      I(Sand/100) + I(grass/100) +I(bare/100)+
+                                      I(Sand/100) + 
+                                        I(grass/100) +I(bare/100)+
                               I(K/100)+ OM + Fe + Zn + S + Mn
                               +(1|gen_env_pruned$Site),
                               data=gen_env_pruned,
@@ -580,52 +586,27 @@ cl_redux_nutrs_glmer_pruned_rescale<-glmer(Clone ~
 summary(cl_redux_nutrs_glmer_pruned_rescale)
 
 
-dd2<-dredge(cl_redux2_nutrs_glmer_pruned_rescale)
+dd2<-dredge(cl_redux_nutrs_glmer_pruned_rescale)
 subset(dd2,delta<4)
 importance(dd2)#)
 importance(subset(dd2, delta<4))
 
 
 cl_redux2_nutrs_glmer_pruned_rescale<-glmer(Clone ~
-                                      I(Sand/100) + I(grass/100) +I(bare/100)+
+                                      I(Sand/100) + 
+                                        I(grass/100) +
+                                        I(bare/100)+
                                OM + Fe + S 
                               +(1|gen_env_pruned$Site),
                               data=gen_env_pruned,
                               family="binomial",
                               na.action = "na.fail",
-                              weights = rep(13,dim(gen_env_pruned)[1]))
+                              weights = 
+                                rep(13, dim(gen_env_pruned)[1]))
 summary(cl_redux2_nutrs_glmer_pruned_rescale)
-
-cl_redux2_nutrs_glmer_pruned_rescale<-glmer(Clone ~
-                                      I(Sand/100) + I(grass/100) +I(bare/100)+
-                               OM + Fe + S 
-                              +(1|gen_env_pruned$Site),
-                              data=gen_env_pruned,
-                              family="binomial",
-                              na.action = "na.fail",
-                              weights = rep(13,dim(gen_env_pruned)[1]))
-summary(cl_redux2_nutrs_glmer_pruned_rescale)
-
-summary(cl_global_glm_pruned4)
-summary(cl_global_glmer_pruned4)
 
 ```
 
-
-```{r}
-
-dd<-dredge(cl_redux_nutrs_glmer_pruned)
-subset(dd,delta<4)
-importance(dd)#)
-importance(subset(dd, delta<=2))
-
-
-dd4<-dredge(cl_redux_nutrs_glmer_pruned4)
-subset(dd4,delta<4)
-importance(dd4)#)
-importance(subset(dd4, delta<=2))
-
-```
 
 # Do the same predictors of clonality predict Stem density (1-inf)?
 lmer for continuous cariable: count of stems with random effect of site. 
@@ -647,7 +628,7 @@ stem_global_lm_pruned_rescaled <- lm(stem~
                       data=gen_env_pruned)
 summary(stem_global_lm_pruned_rescaled)
 
-anova(stem_global_lmer_pruned_rescaled, stem_global)
+anova(stem_global_lmer_pruned_rescaled, stem_global_lm_pruned_rescaled)
 
 stem_global_lmer_pruned_rescaled4 <-lmer(stem ~ 
            I(Sand/100) + I(grass/100) +I(bare/100)+
@@ -676,7 +657,7 @@ fit # show results
 ```
 
 
-# CAnonical Analysis of Principal Coordinates 
+# Canonical Analysis of Principal Coordinates 
 As in Andreson & Willis 2003, Biodiversity R package
 In constrained ordination we do not want to display all or even most ofthe compositional variation, but only the variation that can be explained by the used environmental variables, or constraints.
 
