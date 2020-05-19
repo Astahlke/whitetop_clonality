@@ -6,7 +6,7 @@ Manuscript in prep here: https://docs.google.com/document/d/1XPrNPiisYU6e_6AW0Rs
  Examines environmental variation across and within sites. Tests for relationship between environmental variation and clonality. 
 
 ## To-do:
-### Devlope repo for reproducibility
+### Devlop repo for reproducibility
 - upload raw ecological and genetic data
 - upload genetic data processing scripts
 ### Analysis 
