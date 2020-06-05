@@ -83,6 +83,7 @@ From least to most clonal: Site 1, 6, 3, 5, 2, 4.
 For the following plots, these variables are plotted against the G/N rank. 
 I'm not sure how I feel about this because GN isn't uniformly distributed. Sites 3 and 6 have almost the same GN, for example.
 
+
 ```{r vegplotsgrass}
 plot(veg_mat$R_GN,veg_mat$grass)
 plot(veg_mat$R_GN,veg_mat$bare)
@@ -93,6 +94,30 @@ plot(veg_mat$R_GN,veg_mat$bare,xaxt="n",ylim=c(0,60),ylab="% Bare",xlab="Prevale
 ```
 
 Grass is highly variable across sites. Bare ground seems to best seperate the low and high clonal sites.The most clonal sites have the most bare ground (but it's still only about 10%).
+
+```{r}
+ ggplot(data = gen_env, aes(x=Site, y=litter)) +
+  geom_boxplot() + 
+  geom_point(alpha=0.3)
+ ggplot(data = gen_env, aes(x=Site, y=grass)) +
+  geom_boxplot() + 
+  geom_point(alpha=0.3)
+ ggsave("grass_site.jpg")
+ ggplot(data = gen_env, aes(x=Site, y=bare)) +
+  geom_boxplot() + 
+  geom_point(alpha=0.3)
+  ggsave("bare_site.jpg")
+ ggplot(data = gen_env, aes(x=Site, y=stem)) +
+  geom_boxplot() + 
+  geom_point(alpha=0.3) 
+   ggsave("stem_site.jpg")
+ggplot(data = gen_env, aes(x=Site, y=Ldraba.cvr)) +
+  geom_boxplot() + 
+  geom_point(alpha=0.3) 
+   ggsave("Ldraba.cvr_site.jpg")
+   
+```
+
 
 # Correlation among vriables 
 
@@ -128,8 +153,12 @@ melted_cormat %>%
   arrange(desc(value))
 
 melted_cormat %>%
-  filter(Var1 == "S" |  Var2 == "S") %>%
-  arrange(desc(value))
+  filter(Var1 == "stem" |  Var2 == "stem") %>%
+  arrange(desc(abs(value)))
+
+melted_cormat %>%
+  filter(Var1 == "bare" |  Var2 == "bare") %>%
+  arrange(desc(abs(value)))
 
 ```
 
@@ -239,8 +268,8 @@ biplot(res, rn=gen_env$Site)
 plot(nut.factors, p.max=.05)
 
 #soil variables for multimodel comparison
-soil.nut1.pcoa<-res$vectors[,"Axis.1"]
-soil.nut2.pcoa<-res$vectors[,"Axis.2"]
+soil.nut.pcoa1<-res$vectors[,"Axis.1"]
+soil.nut.pcoa2<-res$vectors[,"Axis.2"]
 
 barplot(res$values$Relative_eig)
 cumsum(res$values$Relative_eig)
@@ -248,7 +277,7 @@ cumsum(res$eig)/sum(res$eig)
 
 ```
 # Do we need to account for site? 
-```{r anosim_adonis}
+```{r anosim_adonis, cache=TRUE}
 env2 <- gen_env[,c(11:ncol(gen_env))]
 env2 <- as.matrix(env2)
 colnames(env2)
@@ -266,61 +295,116 @@ adonis
 # Global model for multi-model comparison; Clone 0,1
 
 glm() fits a generalized linear model and glmer() fits linear mixed effects models
-
-Global model includes Sand, grass, bare, soil, poca nutrients 1, pcoa nutrients 2
-glmer allows inclusions of site as a random factor. 
+Global model includes Sand, grass, litter, soil, poca nutrients 1, pcoa nutrients 2. glmer allows inclusions of site as a random factor. 
 
 ```{r}
-cl_global_glm <- glm(Clone ~ Sand+grass+bare+
-                       soil.nut1.pcoa+soil.nut2.pcoa,
+cl_global_bare_glm <- glm(Clone ~ Sand+grass+bare+
+                       soil.nut.pcoa1+soil.nut.pcoa2,
                     data=gen_env,family="binomial",
                     na.action = "na.fail",weights = rep(15,dim(gen_env)[1]))
-summary(cl_global_glm)
+summary(cl_global_bare_glm)
 
-cl_global_site <- glmer(Clone ~ Sand+grass+bare+
-                        soil.nut1.pcoa + soil.nut2.pcoa
+cl_global_litter_glm <- glm(Clone ~ Sand+grass+litter+
+                       soil.nut.pcoa1+soil.nut.pcoa2,
+                    data=gen_env,family="binomial",
+                    na.action = "na.fail",weights = rep(15,dim(gen_env)[1]))
+summary(cl_global_litter_glm)
+
+cl_global_bare_litter_site <- glmer(Clone ~ Sand+grass+bare+litter+
+                        soil.nut.pcoa1 + soil.nut.pcoa2
                      +(1|gen_env$Site),
                      data=gen_env, family="binomial", 
                      na.action = "na.fail",
                      weights = rep(15,dim(gen_env)[1]))
-summary(cl_global_site)
+summary(cl_global_bare_litter_site)
 
-anova(cl_global_site, cl_global_glm)
+cl_global_bare_site <- glmer(Clone ~ Sand+grass+bare+
+                        soil.nut.pcoa1 + soil.nut.pcoa2
+                     +(1|gen_env$Site),
+                     data=gen_env, family="binomial", 
+                     na.action = "na.fail",
+                     weights = rep(15,dim(gen_env)[1]))
+summary(cl_global_bare_site)
+
+cl_global_litter_site <- glmer(Clone ~ Sand+grass+litter+
+                        soil.nut.pcoa1 + soil.nut.pcoa2
+                     +(1|Site),
+                     data=gen_env, family="binomial", 
+                     na.action = "na.fail",
+                     weights = rep(15,dim(gen_env)[1]))
+summary(cl_global_litter_site)
+
+anova( cl_global_litter_site, cl_global_litter_glm)
+anova(cl_global_bare_site, cl_global_litter_site)
+
+cl_redux1_litter_site <- glmer(Clone ~ Sand+grass+litter+
+                        soil.nut.pcoa1 + 
+                     +(1|Site),
+                     data=gen_env, family="binomial", 
+                     na.action = "na.fail",
+                     weights = rep(15,dim(gen_env)[1]))
+summary(cl_redux1_litter_site)
+
+anova( cl_global_litter_site, cl_redux1_litter_site)
+
+
+cl_redux2_litter_site <- glmer(Clone ~ Sand+litter+
+                        soil.nut.pcoa1 + 
+                     (1|Site),
+                     data=gen_env, family="binomial", 
+                     na.action = "na.fail",
+                     weights = rep(15,dim(gen_env)[1]))
+summary(cl_redux2_litter_site)
+
+anova( cl_redux1_litter_site, cl_redux2_litter_site)
+
+
 ```
 
-Inclusion of site as random factor impoves AIC. 
+Inclusion of site as random effect impoves AIC. The original model included bare greound. When site was included as a random effect, bare ground lots significance. Not suprising since most subplots did not have any bareground except for at Site 4 which had the most clones. 
+When site is included as a random effect, sand gains significance. 
 
-Any outlier points outweighing the influence of the glm? 
+Any points with extra high influence of the glm? Can't run Cook's distance with the mixed effects model unfortunately. 
+
+
 ```{r}
-cooksd<-cooks.distance(cl_global_glm)
+cooksd<-cooks.distance(cl_global_litter_glm)
 plot(cooksd)
 abline(h = 4*mean(cooksd, na.rm=T), col="red")
 text(x=1:length(cooksd)+1, y=cooksd, labels=ifelse(cooksd>4*mean(cooksd, na.rm=T),names(cooksd),""), col="red")  # add labels
 influential <- as.numeric(names(cooksd)[(cooksd > 4*mean(cooksd, na.rm=T))])
 
-cbind(gen_env[influential, ],soil.nut1.pcoa[influential],soil.nut2.pcoa[influential])
+cbind(gen_env[influential, ],soil.nut.pcoa1[influential],soil.nut.pcoa2[influential])
 
 ```
 Remove these subplots and run again.
 
+Tried testing for highly-influential points in the mixed effects model with influence.ME package -
+https://journal.r-project.org/archive/2012-2/RJournal_2012-2_Nieuwenhuis~et~al.pdf
+but could not resolve annoying lengths differ error. 
+"Error in model.frame.default(data = data.update, weights = rep(15, dim(gen_env)[1]), : variable lengths differ (found for 'soil.nut.pcoa1')"
+
+```{r influence.ME}
+#install.packages("influence.ME")
+# library(influence.ME)
+# estex <- influence.ME::influence(cl_global_litter_site, "Site")
+```
+
 ```{r}
 gen_env_pruned <- gen_env[-influential,]
-soil.nut1.pcoa_pruned<-res$vectors[-influential,"Axis.1"]
-soil.nut2.pcoa_pruned<-res$vectors[-influential,"Axis.2"]
-
-# soil.nut1_pruned <-soilz.mds$points[-influential,"MDS1"]#soil variables for multimodel comparison
-# soil.nut2_pruned <-soilz.mds$points[-influential,"MDS2"]
+soil.nut.pcoa1_pruned<-res$vectors[-influential,"Axis.1"]
+soil.nut.pcoa2_pruned<-res$vectors[-influential,"Axis.2"]
 
 cl_global_glm_pruned<-glm(Clone ~ 
-           Sand+grass+bare+
-             soil.nut1.pcoa_pruned+soil.nut2.pcoa_pruned,
+           Sand+grass+litter+
+             soil.nut.pcoa1_pruned+soil.nut.pcoa2_pruned,
            data=gen_env_pruned, family="binomial",
            na.action="na.fail",
            weights = rep(13,dim(gen_env_pruned)[1]))
 
 cl_global_glmer_pruned<-glmer(Clone ~ 
-           Sand+grass+bare+
-             soil.nut1.pcoa_pruned + soil.nut2.pcoa_pruned 
+           Sand+grass+litter+
+             soil.nut.pcoa1_pruned + soil.nut.pcoa2_pruned 
            +(1|gen_env_pruned$Site),
            data=gen_env_pruned, 
            family="binomial", 
@@ -344,8 +428,8 @@ influential <- as.numeric(names(cooksd_pruned)
                           [(cooksd_pruned > 4*mean(cooksd_pruned,
                                                    na.rm=T))])
 cbind(gen_env_pruned[influential,],
-      soil.nut1.pcoa_pruned[influential],
-      soil.nut2.pcoa_pruned[influential])
+      soil.nut.pcoa1_pruned[influential],
+      soil.nut.pcoa2_pruned[influential])
 ```
 
 ## Does site 4 have an outsized effect? 
@@ -353,13 +437,13 @@ cbind(gen_env_pruned[influential,],
 ```{r drop_4}
 drop4 <- which(gen_env$Site == 4)
 gen_env_pruned4 <- gen_env[-drop4,]
-soil.nut1.pcoa_pruned4 <-res$vectors[-drop4,"Axis.1"]
-soil.nut2.pcoa_pruned4 <-res$vectors[-drop4,"Axis.2"]
+soil.nut.pcoa1_pruned4 <-res$vectors[-drop4,"Axis.1"]
+soil.nut.pcoa2_pruned4 <-res$vectors[-drop4,"Axis.2"]
 
 
 cl_global_glm_pruned4<-glm(Clone ~
-                            Sand+grass+bare+
-                            soil.nut1.pcoa_pruned4 + soil.nut2.pcoa_pruned4,
+                            Sand+grass+litter+
+                            soil.nut.pcoa1_pruned4 + soil.nut.pcoa2_pruned4,
                           data=gen_env_pruned4,
                           family="binomial",
                           na.action="na.fail",
@@ -367,8 +451,8 @@ cl_global_glm_pruned4<-glm(Clone ~
 
 
 cl_global_glmer_pruned4<-glmer(Clone ~
-                                Sand+grass+bare+
-                                soil.nut1.pcoa_pruned4 + soil.nut2.pcoa_pruned4
+                                Sand+grass+litter+
+                                soil.nut.pcoa1_pruned4 + soil.nut.pcoa2_pruned4
                               +(1|gen_env_pruned4$Site),
                               data=gen_env_pruned4,
                               family="binomial",
@@ -395,8 +479,8 @@ influential <- as.numeric(names(cooksd_pruned)
                           [(cooksd_pruned > 4*mean(cooksd_pruned, na.rm=T) )] )
 
 cbind(gen_env_pruned4[influential,],
-      soil.nut1.pcoa_pruned4[influential],
-      soil.nut1.pcoa_pruned4[influential])
+      soil.nut.pcoa1_pruned4[influential],
+      soil.nut.pcoa1_pruned4[influential])
 
 ```
 As before, 2.3.11 and 6.1.5 are outliers. Leave these in and more on. Continue to parse down the glmer without site 4. 
@@ -407,7 +491,17 @@ Significantly improved AIC.
 ```{r}
 cl_redux1_glmer_pruned4<-glmer(Clone ~
                                 Sand+grass+bare+
-                                soil.nut1.pcoa_pruned4
+                                soil.nut.pcoa1_pruned4
+                              +(1|gen_env_pruned4$Site),
+                              data=gen_env_pruned4,
+                              family="binomial",
+                              na.action = "na.fail",
+                              weights = rep(15,dim(gen_env_pruned4)[1]))
+summary(cl_redux1_glmer_pruned4)
+
+cl_redux1_glmer_pruned4<-glmer(Clone ~
+                                Sand+litter+grass+
+                                soil.nut.pcoa1_pruned4
                               +(1|gen_env_pruned4$Site),
                               data=gen_env_pruned4,
                               family="binomial",
@@ -416,8 +510,8 @@ cl_redux1_glmer_pruned4<-glmer(Clone ~
 summary(cl_redux1_glmer_pruned4)
 
 cl_redux2_glmer_pruned4<-glmer(Clone ~
-                                Sand+grass+
-                                soil.nut1.pcoa_pruned4
+                                Sand+litter+
+                                soil.nut.pcoa1_pruned4
                               +(1|gen_env_pruned4$Site),
                               data=gen_env_pruned4,
                               family="binomial",
@@ -429,7 +523,7 @@ anova(cl_global_glmer_pruned4, cl_redux2_glmer_pruned4)
 
 cl_redux2_glmer_pruned4<-glmer(Clone ~
                                 Sand+grass+
-                                soil.nut1.pcoa_pruned4
+                                soil.nut.pcoa1_pruned4
                               +(1|gen_env_pruned4$Site),
                               data=gen_env_pruned4,
                               family="binomial",
@@ -445,7 +539,7 @@ With site 4, reduce model.
 ```{r}
 cl_redux1_glmer_pruned<- glmer(Clone ~ 
            Sand+ grass + bare +
-             soil.nut1.pcoa_pruned +
+             soil.nut.pcoa1_pruned +
            +(1|gen_env_pruned$Site),
            data=gen_env_pruned, 
            family="binomial", 
@@ -457,7 +551,7 @@ anova(cl_global_glmer_pruned, cl_redux1_glmer_pruned)
 
 cl_redux2_glmer_pruned <- glmer(Clone ~ 
             Sand+ grass
-              + soil.nut1.pcoa_pruned +
+              + soil.nut.pcoa1_pruned +
               (1|gen_env_pruned$Site),
              data=gen_env_pruned,family="binomial",
             na.action = "na.fail",
@@ -467,7 +561,7 @@ summary(cl_redux2_glmer_pruned)
 anova(cl_global_glmer_pruned, cl_redux2_glmer_pruned)
 
 cl_redux3_glmer_pruned <- glmer(Clone ~ 
-            Sand + soil.nut1.pcoa_pruned +
+            Sand + soil.nut.pcoa1_pruned +
               (1|gen_env_pruned$Site),
              data=gen_env_pruned,family="binomial",
             na.action = "na.fail",
@@ -475,7 +569,7 @@ cl_redux3_glmer_pruned <- glmer(Clone ~
 summary(cl_redux3_glmer_pruned)
 
 cl_redux4_glmer_pruned <- glmer(Clone ~ 
-            grass + soil.nut1.pcoa_pruned +
+            grass + soil.nut.pcoa1_pruned +
               (1|gen_env_pruned$Site),
              data=gen_env_pruned,family="binomial",
             na.action = "na.fail",
@@ -488,7 +582,7 @@ anova(cl_redux2_glmer_pruned, cl_redux3_glmer_pruned)
 
 ```{r}
 cl_redux_nutrs_glmer_pruned <- glmer(Clone ~
-              grass + Sand +                         
+              Sand + litter + grass +                       
               I(K/100)+ OM + Fe + Zn + S + Mn
               +  (1|gen_env_pruned$Site),
              data=gen_env_pruned,family="binomial",
@@ -518,16 +612,18 @@ subset(dd4,delta<4)
 importance(dd4)#)
 importance(subset(dd4, delta<=2))
 
+?dredge
+
 ```
 
 
 ## Try re-scaling soil.nutrients or grass/sand/bare?
 
-```{r rescale_surfacevars}
-max(soil.nut1.pcoa_pruned4) - min(soil.nut1.pcoa_pruned4)
-max(soil.nut2.pcoa_pruned4) - min(soil.nut2.pcoa_pruned4)
+```{r rescale_vars}
+max(soil.nut.pcoa1_pruned4) - min(soil.nut.pcoa1_pruned4)
+max(soil.nut.pcoa2_pruned4) - min(soil.nut.pcoa2_pruned4)
 
-max(soil.nut1.pcoa_pruned) - min(soil.nut1.pcoa_pruned)
+max(soil.nut.pcoa1_pruned) - min(soil.nut.pcoa1_pruned)
 max(gen_env_pruned$Sand) - min(gen_env_pruned$Sand)
 max(gen_env_pruned$grass) - min(gen_env_pruned$grass)
 
@@ -535,9 +631,9 @@ max(gen_env_pruned$K/100) - min(gen_env_pruned$K/100)
 max(gen_env_pruned$OM) - min(gen_env_pruned$OM)
 
 cl_global_glmer_pruned_rescaled <-glmer(Clone ~ 
-           I(Sand/100) + I(grass/100) +I(bare/100)+
-             soil.nut1.pcoa_pruned +
-             soil.nut2.pcoa_pruned                           
+           I(Sand/100) + I(grass/100) +I(litter/100)+
+             soil.nut.pcoa1_pruned +
+             soil.nut.pcoa2_pruned                           
            +(1|gen_env_pruned$Site),
            data=gen_env_pruned, 
            family="binomial", 
@@ -545,27 +641,28 @@ cl_global_glmer_pruned_rescaled <-glmer(Clone ~
            weights = rep(13,dim(gen_env_pruned)[1]))
 summary(cl_global_glmer_pruned_rescaled)
 
-cl_global_glmer_pruned<-glmer(Clone ~ 
-          Sand + grass + bare +
-             soil.nut1.pcoa_pruned +
-             soil.nut2.pcoa_pruned                           
+
+cl_global_glmer_pruned_rescaled2 <-glmer(Clone ~ 
+           I(Sand/100) + I(grass/100) +I(litter/100)+
+             soil.nut.pcoa1_pruned +
            +(1|gen_env_pruned$Site),
            data=gen_env_pruned, 
            family="binomial", 
            na.action = "na.fail",
            weights = rep(13,dim(gen_env_pruned)[1]))
-summary(cl_global_glmer_pruned)
+summary(cl_global_glmer_pruned_rescaled2)
+
 
 cl_redux_nutrs_glmer_pruned4_rescale<-glmer(Clone ~
                                       I(Sand/100) + 
                                         I(grass/100) + 
-                                        I(bare/100) +
+                                        I(litter/100) +
                               I(K/100)+ OM + Fe + Zn + S + Mn
-                              +(1|gen_env_pruned4$Site),
-                              data=gen_env_pruned4,
+                              +(1|gen_env_pruned$Site),
+                              data=gen_env_pruned,
                               family="binomial",
                               na.action = "na.fail",
-                              weights = rep(15,dim(gen_env_pruned4)[1]))
+                              weights = rep(15,dim(gen_env_pruned)[1]))
 summary(cl_redux_nutrs_glmer_pruned4_rescale)
 
 dd2_4<-dredge(cl_redux_nutrs_glmer_pruned4_rescale)
@@ -576,7 +673,7 @@ importance(subset(dd2_4, delta<4))
 
 cl_redux_nutrs_glmer_pruned_rescale<-glmer(Clone ~
                                       I(Sand/100) + 
-                                        I(grass/100) +I(bare/100)+
+                                        I(grass/100) +I(litter/100)+
                               I(K/100)+ OM + Fe + Zn + S + Mn
                               +(1|gen_env_pruned$Site),
                               data=gen_env_pruned,
@@ -595,8 +692,8 @@ importance(subset(dd2, delta<4))
 cl_redux2_nutrs_glmer_pruned_rescale<-glmer(Clone ~
                                       I(Sand/100) + 
                                         I(grass/100) +
-                                        I(bare/100)+
-                               OM + Fe + S 
+                                        I(litter/100)+
+                               OM + S 
                               +(1|gen_env_pruned$Site),
                               data=gen_env_pruned,
                               family="binomial",
@@ -605,41 +702,125 @@ cl_redux2_nutrs_glmer_pruned_rescale<-glmer(Clone ~
                                 rep(13, dim(gen_env_pruned)[1]))
 summary(cl_redux2_nutrs_glmer_pruned_rescale)
 
+## Taking out site 4 -> lose significance of grass
+cl_redux2_nutrs_glmer_pruned4_rescale<-glmer(Clone ~
+                                      I(Sand/100) + 
+                                        I(grass/100) +
+                                        I(litter/100)+
+                               OM + S 
+                              +(1|gen_env_pruned4$Site),
+                              data=gen_env_pruned4,
+                              family="binomial",
+                              na.action = "na.fail",
+                              weights = 
+                                rep(13, dim(gen_env_pruned4)[1]))
+summary(cl_redux2_nutrs_glmer_pruned4_rescale)
+
 ```
 
+OM is highlighy negatively correlated with bare ground. (Check OM variation too.)
+
+## Plot model results
+```{r ggcoefstats}
+library(ggstatsplot)
+
+# for reproducibility
+set.seed(123)
+
+
+# plot
+ggstatsplot::ggcoefstats(
+  cl_redux2_nutrs_glmer_pruned_rescale,
+  point.args = list(color = "red", shape = 15),
+  vline.args = list(color = "#CC79A7", linetype = "dotdash"),
+  # stats.label.color = c("#0072B2", "#D55E00", "darkgreen"),
+  title = "Subplot clonality predicted by environmental conditions",
+  subtitle = "Final GLMER with site as random effect",
+  # ggtheme = hrbrthemes::theme_ipsum_ps(),
+  ggstatsplot.layer = FALSE
+) + # note the order in which the labels are entered
+  # ggplot2::scale_y_discrete(labels = c("transmission", "cylinders", "interaction")) +
+  ggplot2::labs(x = "regression coefficient", y = NULL)
+  ggsave("subplotclonality_glmer_final.jpg")
+dev.off()
+```
 
 # Do the same predictors of clonality predict Stem density (1-inf)?
 lmer for continuous cariable: count of stems with random effect of site. 
 
 ```{r}
 stem_global_lmer_pruned_rescaled <-lmer(stem ~ 
-           I(Sand/100) + I(grass/100) +I(bare/100)+
-             soil.nut1.pcoa_pruned +
-             soil.nut2.pcoa_pruned                           
+           I(Sand/100) + I(grass/100) +I(litter/100)+
+             soil.nut.pcoa1_pruned +
+             soil.nut.pcoa2_pruned                           
            +(1|gen_env_pruned$Site),
            data=gen_env_pruned, 
            na.action = "na.fail")
 summary(stem_global_lmer_pruned_rescaled)
 
 stem_global_lm_pruned_rescaled <- lm(stem~
-                     I(Sand/100) + I(grass/100) +I(bare/100)+
-                      soil.nut1.pcoa_pruned +
-                    soil.nut2.pcoa_pruned,
+                     I(Sand/100) + I(grass/100) +I(litter/100)+
+                      soil.nut.pcoa1_pruned +
+                    soil.nut.pcoa2_pruned,
                       data=gen_env_pruned)
 summary(stem_global_lm_pruned_rescaled)
 
 anova(stem_global_lmer_pruned_rescaled, stem_global_lm_pruned_rescaled)
 
-stem_global_lmer_pruned_rescaled4 <-lmer(stem ~ 
-           I(Sand/100) + I(grass/100) +I(bare/100)+
-             soil.nut1.pcoa_pruned4 +
-             soil.nut2.pcoa_pruned4                           
-           +(1|gen_env_pruned4$Site),
-           data=gen_env_pruned4, 
-           na.action = "na.fail")
-summary(stem_global_lmer_pruned_rescaled4)
+## Cook's distance?
+
+stem_redux1_lm_pruned_rescaled <- lm(stem~
+                     I(Sand/100) + I(grass/100) +I(litter/100)+
+                    soil.nut.pcoa2_pruned,
+                      data=gen_env_pruned)
+summary(stem_redux1_lm_pruned_rescaled)
+
+anova(stem_global_lm_pruned_rescaled, stem_redux1_lm_pruned_rescaled)
+
+# Dropping site 4 does not make a difference.
+# stem_global_lm_pruned_rescaled4 <- lm(stem~
+#                      I(Sand/100) + I(grass/100) +I(litter/100)+
+#                       soil.nut.pcoa1_pruned4 +
+#                     soil.nut.pcoa2_pruned4,
+#                       data=gen_env_pruned4)
+# summary(stem_global_lm_pruned_rescaled4)
+
+stem_nutrs_lm <- lm(stem ~
+              I(Sand/100) + I(grass/100) +I(litter/100)+   
+              I(K/100)+ OM + Fe + Zn + S + Mn,
+              na.action = "na.fail",
+             data=gen_env)
+summary(stem_nutrs_lm)
+
+dd<-dredge(stem_nutrs_lm)
+subset(dd,delta<=2)
+importance(dd)#)
+importance(subset(dd, delta<=2))
+
+stem_redux_nutrs_lm <- lm(stem ~
+              I(Sand/100) + I(grass/100) +I(litter/100)+   
+              OM,
+              na.action = "na.fail",
+             data=gen_env)
+summary(stem_redux_nutrs_lm)
+
+ggstatsplot::ggcoefstats(
+  stem_redux_nutrs_lm,
+  point.args = list(color = "red", shape = 15),
+  vline.args = list(color = "#CC79A7", linetype = "dotdash"),
+  # stats.label.color = c("#0072B2", "#D55E00", "darkgreen"),
+  title = "Subplot whitetop stem density predicted by environmental conditions",
+  subtitle = "Final LM ",
+  # ggtheme = hrbrthemes::theme_ipsum_ps(),
+  ggstatsplot.layer = FALSE
+) + # note the order in which the labels are entered
+  # ggplot2::scale_y_discrete(labels = c("transmission", "cylinders", "interaction")) +
+  ggplot2::labs(x = "regression coefficient", y = NULL)
+  ggsave("subplot_stemdensity_lm_final.jpg")
+dev.off()
+
 ```
-The answer is basically no. 
+
 
 paring down the soil data
 have to NAomit as missing NH4_N values for rows 1,18,and 32
