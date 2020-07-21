@@ -1,0 +1,333 @@
+---
+title: "Clones in Space"
+author: "Amanda Stahlke"
+date: "12/17/2019"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, collapse = FALSE)
+```
+
+```{r libraries, message=FALSE, collapse=TRUE}
+# genetics
+library(adegenet)
+library(poppr)
+
+# data processing
+library(dplyr)
+library(stringr)
+library(ggplot2)
+
+# spatial
+library(geosphere)
+
+options(scipen=999)
+```
+
+Read in genetic data
+
+```{r, collapse = TRUE}
+
+GMtable <-  read.csv("genomatrix_filtered.csv")
+colnames(GMtable)[1] <- "sampID"
+sampID <- GMtable$sampID
+
+
+GMtable$site <- str_split(sampID, "[[.]]", simplify = TRUE)[,1]
+GMtable$plot <-  str_split(sampID, "[[.]]", simplify = TRUE)[,2]
+GMtable$subplot <-  str_split(sampID, "[[.]]", simplify = TRUE)[,3]
+GMtable$plant <-  str_split(sampID, "[[.]]", simplify = TRUE)[,4]
+GMtable$sampleName <-  paste(GMtable$site , GMtable$plot, GMtable$subplot, GMtable$plant, sep = ".")
+
+GMtable <- GMtable[order(GMtable$sampleName),]
+popmatrix <- data.frame(site = GMtable$site, 
+                        plot = GMtable$plot, 
+                        subplot = GMtable$subplot, 
+                        plant = GMtable$plant, 
+                        sampleName = GMtable$sampleName)
+head(popmatrix)
+
+genomatrix <- dplyr::select(GMtable, starts_with('Allele'))
+dim(genomatrix)
+head(genomatrix)[,1:10]
+genind <- df2genind(genomatrix, type="PA", 
+                    pop = popmatrix$site,
+                    ind.names = popmatrix[,'sampleName'],
+                    loc.names = colnames(genomatrix),
+                    sep = ".",
+                    strata = popmatrix[,c('site','plot', 'subplot', 'plant')]) ## 
+genind 
+table(pop(genind)) # all sites have 30 individuals
+
+```
+
+```{r spatial_metadata}
+subplot_points <- read.csv("subplot_latlong.csv")
+subplot_points <- subplot_points[order(subplot_points$subplotID),] # reorder to reflect genotype matrix
+head(subplot_points)
+
+```
+
+
+```{r clones, collapse = TRUE}
+genclone <- as.genclone(genind) 
+
+## threshold is 4 based on the bimodal distribution of allele diffs
+dist <- diss.dist(genclone)
+mlg.filter(genclone, distance = dist) <- 4 + .Machine$double.eps^0.5 
+genclone
+
+mlgtab <- mlg.table(genclone)
+dim(mlgtab) # for each site
+mll(genclone, 'contracted') # the MLL for each sample
+
+lineageID <- as.character(mll(genclone, 'contracted'))
+plantID_MLG <- data.frame(plantID=rownames(genclone$strata), lineageID)
+
+plantID_MLG$subplotID <- paste(popmatrix$site,
+                                        popmatrix$plot,
+                                        popmatrix$subplot, sep = ".")
+
+plantID_MLG_long_lat <- merge(plantID_MLG, subplot_points)
+head(plantID_MLG_long_lat)
+```
+
+
+
+```{r}
+lineageIDs  <-  unique(plantID_MLG_long_lat$lineageID)
+mlg_size <- matrix(nrow=length(lineageIDs), ncol=4)
+colnames(mlg_size) <- c("lineageID", "n_samps", "n_subplots", "area_dis")
+mlg_size[,"lineageID"] <- as.character(lineageIDs)
+head(mlg_size)
+```
+
+
+```{r calculate linear distance and , collapse = TRUE}
+s <- NULL
+for(s in 1:length(lineageIDs)){
+  # cat(mlgs[s])
+  mlgs_meta <- filter(plantID_MLG_long_lat, lineageID==lineageIDs[s])
+  mlg_subplots <- length(unique(mlgs_meta$subplotID))
+  mlg_size[s,"n_samps"] <-length(unique(mlgs_meta$plantID))
+  mlg_size[s,"n_subplots"] <-length(unique(mlgs_meta$subplotID))
+  if(mlg_subplots==1 && length(unique(mlgs_meta$plantID))==2){
+    mlg_size[s,"area_dis"] <- .3
+  }
+  else if(mlg_subplots==1 && length(unique(mlgs_meta$plantID))==1){
+  mlg_size[s,"area_dis"] <- 0
+  }
+  else if ( mlg_subplots==2){
+    mlgs_meta_geo <- unique(mlgs_meta[,c('lon', 'lat')])
+    mlg_size[s,"area_dis"] <- distGeo(mlgs_meta_geo[1,c('lon', 'lat')], 
+                             mlgs_meta_geo[2,c('lon', 'lat')])
+  } else if ( mlg_subplots>2) {
+    mlg_size[s,'area_dis'] <- areaPolygon(mlgs_meta[,c('lon', 'lat')])
+  }
+}
+head(mlg_size)
+mlg_size <- as.data.frame(mlg_size)
+mlg_size$n_samps <-as.numeric(as.character(mlg_size$n_samps))
+mlg_size$n_subplots<- as.numeric(as.character(mlg_size$n_subplots))
+mlg_size$area_dis<- as.numeric(as.character(mlg_size$area_dis))
+mlg_size
+```
+
+The number of samples per clonal unit is usually less than 5. 
+```{r}
+hist(as.numeric(mlg_size$n_samps), breaks = 15)
+```
+
+Clones rarely exist outside of their subplots. 
+```{r}
+hist(as.numeric(mlg_size$n_subplots), breaks = 10)
+```
+
+And so the clonal subrange is within the subplot. There are only a couple of huge clones. Keep in mind the area_dist variable is a little weird because it's linear euclidean distance (m) when there are only 2 subplots and area (m2) for three subplots. 
+```{r}
+hist(as.numeric(mlg_size$area_dis), breaks = 20)
+
+table(mlg_size$n_subplots)
+
+## linear dist
+two_clones_two_subplots <- filter(mlg_size, n_subplots==2) 
+hist(two_clones_two_subplots$area_dis, breaks = 20)
+
+## polygon
+more_clones_more_subplots <- filter(mlg_size, n_subplots>2)
+hist(more_clones_more_subplots$area_dis, breaks = 40)
+
+```
+
+```{r}
+mlg_size %>%
+  summarise(mean(n_samps), median(n_samps))
+
+mlg_size %>%
+  summarise(mean(n_subplots), median(n_subplots))
+
+mlg_size %>%
+  filter(n_subplots==2)
+
+## 
+mlg_size %>%
+  filter(n_subplots==2) %>%
+  summarise(mean(n_subplots), median(n_subplots), mean(area_dis))
+
+mlg_size %>%
+  filter(n_subplots>3) 
+         
+mlg_size %>%
+  filter(n_subplots>3) %>%
+  summarise(mean(n_subplots), median(n_subplots), mean(area_dis))
+
+mlg_size %>%
+  filter(n_subplots>3) %>% 
+  merge(plantID_MLG_long_lat[,c('lineageID','subplotID','plot', 'site', 'numx', 'y')]) %>%
+  arrange(subplotID)
+
+mlg_size %>%
+  filter(n_subplots>3) %>% 
+  merge(plantID_MLG_long_lat[,c('lineageID','subplotID','plot', 'site', 'numx', 'y')]) %>%
+  arrange(area_dis)
+
+mlg_size %>%
+  filter(n_subplots>3) %>% 
+  merge(plantID_MLG_long_lat[,c('lineageID','subplotID','plot', 'site')]) %>%
+  group_by(site) %>%
+  summarise(mean(n_samps), mean(area_dis))
+
+```
+Sites with the lowest G/N also have the biggest clones. Otherwise the clones we sampled are nearly all within the subplot range and have rarely grown much more beyond that. At the sites closest to the river, it could be because of very high turnover - or otherwise low turnover for whatever reason at sites 2 and 4. It could also be that you have greater stability and more dense competition. To assess this we should go back and re-sample or stimulate these effects. This might mean that depending on disturbance regimes you would manage differently.
+
+```{r}
+table(mlg_size$n_subplots)/length(mlg_size$n_subplots)
+sum(table(mlg_size$n_subplots)[1:2])/length(mlg_size$n_subplots)
+```
+The majority of clones were short-range, within subplots or maybe one other neighboring subplot. 
+
+
+```{r}
+site_mlg_size <- merge(mlg_size, plantID_MLG_long_lat[,c('lineageID','subplotID','plot', 'site')])
+head(site_mlg_size)
+site_mlg_size$site <- as.factor(site_mlg_size$site)
+
+ggplot(data=filter(site_mlg_size, n_samps >2), 
+       aes(x=site, y=area_dis)) +
+  geom_violin() +
+  geom_point() +
+  ylab("Polygon Area for clones of 3+ ramets")
+
+ggplot(data=filter(site_mlg_size, n_samps ==2), 
+       aes(x=site, y=area_dis)) +
+  geom_violin() +
+  geom_point() +
+  ylab("Euclidean Distance between clones of 2 ramets")
+```
+
+
+
+#### Trying to get the handy spatial statistics from RClone but it doesn't really work
+
+```{r}
+# devtools::install_github("dbailleul/RClone")
+library(RClone)
+
+coords <- plantID_MLG_long_lat[,c('lon','lat')]
+test <- genind2df(genind)
+popvec <- test[,1] 
+
+data2 <- convert_GC(test, 1)
+data2 <- data2[,seq(2, ncol(data2), by = 2)]
+data2 <- sort_all(data2)
+
+MLLlist <- MLL_generator(data2, vecpop = popvec, alpha2 = rep(3,6))
+MLLlist
+```
+
+```{r clonal_index}
+cl_index_res <- clonal_index(data2, vecpop = popvec, listMLL = MLLlist)
+cl_index_res
+```
+
+```{r pareto}
+pareto <- Pareto_index(data2, vecpop = popvec, listMLL = MLLlist)
+```
+
+
+```{r}
+coords <- sapply(coords, as.numeric)
+
+## one strategry is to subsample each subplot. 
+subsample_coords <- coords[seq(from=1, to=nrow(data2), by = 2),]
+# subsample one plant per subplot?
+subsample_data2 <- data2[seq(from=1, to=nrow(data2), by = 2),]
+
+sp_site.df <- data.frame()
+for(i in 1:6){
+  subrange <- clonal_sub(data2[(30*(i-1)+1):(30*i),],
+                         coords = as.matrix(coords)[(30*(i-1)+1):(30*i),], 
+                         listMLL = MLLlist[[i]])
+  aggindex <- agg_index(data2[(30*(i-1)+1):(30*i),],
+                        coords = as.matrix(coords)[(30*(i-1)+1):(30*i),], 
+                        listMLL = MLLlist[[i]],
+                        bar= TRUE, nbrepeat = 9999)
+  edge <- edge_effect(data2[(30*(i-1)+1):(30*i),],
+              coords = as.matrix(coords)[(30*(i-1)+1):(30*i),],
+              centroid(as.matrix(coords)[(30*(i-1)+1):(30*i),]),
+              listMLL = MLLlist[[i]],
+              bar= TRUE, nbrepeat = 9999)
+  site.df <- data.frame(site= i, subrange=subrange[[1]], aggindex=aggindex$results, ee=edge$results)
+  sp_site.df <- rbind(site.df, sp_site.df)
+}
+
+par <- unlist(pareto)[grep(pattern = ".Pareto", names(unlist(pareto)))]
+par.p <- unlist(pareto)[grep(pattern = "coefficients8", names(unlist(pareto)))]
+pareto_beta <- par[seq(1, length(par), by =2)]
+
+
+sp_site.df <- merge(sp_site.df, data.frame(site=seq(1:6), pareto_beta=pareto_beta)) %>%
+  select(c(site, subrange, aggindex.Ac, aggindex.pval, ee.Ee, ee.pval_Ee, pareto_beta))
+
+write.csv(sp_site.df, "sp_clonal_structure.csv")
+
+```
+
+```{r}
+sp_site.df %>%
+  arrange(aggindex.Ac) 
+
+sp_site.df %>%
+  arrange(subrange)
+
+sp_site.df %>%
+  arrange(pareto_beta)
+```
+
+
+```{r loci_reliability}
+samp_loci_res_bysite <- sample_loci(data2, vecpop = popvec, nbrepeat = 1000)
+
+boxplot(samp_loci_res_bysite$`1`$raw_MLG, main = "Genotype accumulation curve",
+        xlab = "Number of loci sampled", ylab = "Number of multilocus genotypes")
+boxplot(samp_loci_res_bysite$`2`$raw_MLG, main = "Genotype accumulation curve",
+        xlab = "Number of loci sampled", ylab = "Number of multilocus genotypes")
+
+boxplot(samp_loci_res_bysite$`3`$raw_MLG, main = "Genotype accumulation curve",
+        xlab = "Number of loci sampled", ylab = "Number of multilocus genotypes")
+boxplot(samp_loci_res_bysite$`4`$raw_MLG, main = "Genotype accumulation curve",
+        xlab = "Number of loci sampled", ylab = "Number of multilocus genotypes")
+boxplot(samp_loci_res_bysite$`5`$raw_MLG, main = "Genotype accumulation curve",
+        xlab = "Number of loci sampled", ylab = "Number of multilocus genotypes")
+boxplot(samp_loci_res_bysite$`6`$raw_MLG, main = "Genotype accumulation curve",
+        xlab = "Number of loci sampled", ylab = "Number of multilocus genotypes")
+
+samp_loci_res <- sample_loci(data2, nbrepeat = 1000)
+
+boxplot(samp_loci_res$raw_MLG, main = "Genotype accumulation curve",
+        xlab = "Number of loci sampled", ylab = "Number of multilocus genotypes")
+
+samp_loci_res$res_MLG
+
+```
+
